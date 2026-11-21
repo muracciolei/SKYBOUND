@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#050b14">
+  <meta name="description" content="SKYBOUND — simulador de vuelo 3D para el navegador. Vuela, explora y completa desafíos en un mundo procedural.">
+  <title>SKYBOUND — Flight Simulator</title>
+  <link rel="stylesheet" href="./style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three/three.module.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <canvas id="game-canvas" aria-label="SKYBOUND 3D flight simulator"></canvas>
+
+  <!-- ============================ LOADING ============================ -->
+  <div id="loading-screen" class="loading-screen">
+    <div class="loading-mark">
+      <span class="loading-wing left"></span>
+      <span class="loading-wing right"></span>
+      <span class="loading-dot"></span>
+    </div>
+    <div class="loading-title">SKYBOUND</div>
+    <div class="loading-sub">GENERATING WORLD</div>
+    <div class="loading-track"><i id="loading-bar"></i></div>
+    <div id="loading-detail" class="loading-detail">Initializing flight systems…</div>
+  </div>
+
+  <!-- ============================ HUD ============================ -->
+  <div id="hud" class="hud hidden" aria-hidden="true">
+    <div class="hud-vignette"></div>
+
+    <section class="hud-panel hud-speed glass">
+      <div class="hud-label">AIRSPEED <span>KTS</span></div>
+      <div class="hud-big" id="hud-speed">000</div>
+      <div class="hud-mini-track"><i id="hud-speed-bar"></i></div>
+      <div class="hud-small" id="hud-groundspeed">GS 000</div>
+      <div class="hud-warning" id="hud-stall">STALL</div>
+    </section>
+
+    <section class="hud-panel hud-alt glass">
+      <div class="hud-label">ALTITUDE <span>M</span></div>
+      <div class="hud-big" id="hud-alt">0000</div>
+      <div class="hud-mini-track"><i id="hud-alt-bar"></i></div>
+      <div class="hud-small" id="hud-agl">AGL 0000</div>
+    </section>
+
+    <section class="hud-attitude" id="hud-attitude">
+      <svg viewBox="0 0 180 180" width="180" height="180" aria-hidden="true">
+        <defs>
+          <clipPath id="attitude-clip"><circle cx="90" cy="90" r="58"></circle></clipPath>
+          <linearGradient id="sky-grad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#123b62"></stop>
+            <stop offset="100%" stop-color="#55a7cf"></stop>
+          </linearGradient>
+          <linearGradient id="ground-grad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#8a633a"></stop>
+            <stop offset="100%" stop-color="#3a2a1b"></stop>
+          </linearGradient>
+        </defs>
+        <circle cx="90" cy="90" r="63" class="attitude-ring"></circle>
+        <g clip-path="url(#attitude-clip)">
+          <g id="attitude-horizon">
+            <rect x="-120" y="-220" width="420" height="220" fill="url(#sky-grad)"></rect>
+            <rect x="-120" y="0" width="420" height="220" fill="url(#ground-grad)"></rect>
+            <line x1="-120" y1="0" x2="300" y2="0" class="horizon-line"></line>
+            <g class="pitch-lines">
+              <line x1="45" y1="-30" x2="135" y2="-30"></line>
+              <line x1="55" y1="-60" x2="125" y2="-60"></line>
+              <line x1="45" y1="30" x2="135" y2="30"></line>
+              <line x1="55" y1="60" x2="125" y2="60"></line>
+              <text x="96" y="-33">10</text>
+              <text x="96" y="-63">20</text>
+              <text x="96" y="27">10</text>
+              <text x="96" y="57">20</text>
+            </g>
+          </g>
+        </g>
+        <path d="M 78 90 L 86 90 L 90 96 L 94 90 L 102 90" class="attitude-wings"></path>
+        <circle cx="90" cy="90" r="2.5" class="attitude-center"></circle>
+        <g id="attitude-roll-ticks" class="roll-ticks"></g>
+        <path d="M 90 22 L 86 30 L 94 30 Z" class="roll-pointer"></path>
+      </svg>
+      <div class="attitude-readout"><span id="hud-pitch">P +0.0</span><span id="hud-roll">R +0.0</span></div>
+    </section>
+
+    <section class="hud-panel hud-heading glass">
+      <div class="hud-label">HEADING <span>DEG</span></div>
+      <div class="hud-big" id="hud-heading">000°</div>
+      <div class="heading-tape">
+        <div id="heading-ticks" class="heading-ticks"></div>
+        <div class="heading-center"></div>
+      </div>
+    </section>
+
+    <section class="hud-panel hud-bottom-left glass">
+      <div class="hud-row"><span>VS</span><strong id="hud-vs">+0.0 m/s</strong></div>
+      <div class="hud-row"><span>THR</span><strong id="hud-throttle">0%</strong></div>
+      <div class="hud-mini-track throttle-track"><i id="hud-throttle-bar"></i></div>
+      <div class="hud-row"><span>GEAR</span><strong id="hud-gear" class="ok">DOWN</strong></div>
+      <div class="hud-row"><span>CAM</span><strong id="hud-cam">CHASE</strong></div>
+    </section>
+
+    <section class="hud-panel hud-bottom-right glass">
+      <div class="hud-label" id="hud-mode-label">FREE FLIGHT</div>
+      <div class="hud-row"><span>SCORE</span><strong id="hud-score">0</strong></div>
+      <div class="hud-row"><span>GATE</span><strong id="hud-gate">—</strong></div>
+      <div class="hud-row"><span>TIME</span><strong id="hud-time">00:00</strong></div>
+      <div class="hud-combo" id="hud-combo">COMBO x1</div>
+    </section>
+
+    <div class="hud-center-mark"><span></span><i></i><span></span></div>
+    <div class="hud-bottom-hint" id="hud-hint">SHIFT throttle · W/S pitch · A/D roll · Q/E yaw · C camera · F gear</div>
+    <div class="hud-toast" id="hud-toast"></div>
+    <div class="hud-fps" id="hud-fps"></div>
+  </div>
+
+  <!-- ============================ UI SCREENS ============================ -->
+  <main id="ui-root">
+    <!-- MAIN MENU -->
+    <section id="screen-menu" class="screen menu-screen">
+      <div class="menu-vignette"></div>
+      <div class="menu-content">
+        <div class="brand">
+          <div class="brand-eyebrow"><span></span> AERONAUTICAL EXPERIENCE <span></span></div>
+          <h1 class="brand-title">SKY<span>BOUND</span></h1>
+          <div class="brand-sub">FLIGHT SIMULATOR</div>
+          <div class="brand-line"></div>
+          <p class="brand-tagline">Un mundo abierto. Una aeronave. El horizonte es tuyo.</p>
+        </div>
+
+        <nav class="menu-buttons" aria-label="Menú principal">
+          <button class="btn btn-primary" data-action="start">
+            <span class="btn-index">01</span>
+            <span class="btn-text"><b>START FLIGHT</b><small>Despega desde la pista 09</small></span>
+            <span class="btn-arrow">→</span>
+          </button>
+          <button class="btn" data-action="free">
+            <span class="btn-index">02</span>
+            <span class="btn-text"><b>FREE FLIGHT</b><small>Vuelo libre en el aire</small></span>
+            <span class="btn-arrow">→</span>
+          </button>
+          <button class="btn" data-action="challenges">
+            <span class="btn-index">03</span>
+            <span class="btn-text"><b>CHALLENGES</b><small>Rutas, velocidad y aterrizajes</small></span>
+            <span class="btn-arrow">→</span>
+          </button>
+          <button class="btn" data-action="settings">
+            <span class="btn-index">04</span>
+            <span class="btn-text"><b>SETTINGS</b><small>Controles, gráficos y audio</small></span>
+            <span class="btn-arrow">→</span>
+          </button>
+        </nav>
+
+        <div class="menu-footer">
+          <div><kbd>W</kbd><kbd>S</kbd> PITCH &nbsp; <kbd>A</kbd><kbd>D</kbd> ROLL &nbsp; <kbd>Q</kbd><kbd>E</kbd> YAW</div>
+          <div><kbd>SHIFT</kbd> THROTTLE &nbsp; <kbd>C</kbd> CAMERA &nbsp; <kbd>ESC</kbd> MENU</div>
+        </div>
+      </div>
+      <div class="menu-side-label">SKYBOUND // BUILD 1.0 // WEBGL</div>
+    </section>
+
+    <!-- CHALLENGES -->
+    <section id="screen-challenges" class="screen sub-screen hidden">
+      <header class="sub-header">
+        <button class="icon-btn" data-action="back" aria-label="Volver">←</button>
+        <div><div class="sub-eyebrow">OPERATIONS</div><h2>CHALLENGES</h2></div>
+        <div class="sub-header-spacer"></div>
+      </header>
+      <div class="challenge-grid" id="challenge-grid"></div>
+      <div class="sub-footer">Selecciona un desafío para iniciarlo inmediatamente. Los récords se guardan localmente.</div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section id="screen-settings" class="screen sub-screen hidden">
+      <header class="sub-header">
+        <button class="icon-btn" data-action="back" aria-label="Volver">←</button>
+        <div><div class="sub-eyebrow">AIRCRAFT CONFIG</div><h2>SETTINGS</h2></div>
+        <div class="sub-header-spacer"></div>
+      </header>
+      <div class="settings-panel glass">
+        <div class="settings-group">
+          <h3>FLIGHT CONTROLS</h3>
+          <label class="setting-row">
+            <span><b>Sensibilidad</b><small>Respuesta de pitch, roll y yaw</small></span>
+            <input type="range" id="setting-sensitivity" min="0.4" max="2" step="0.05">
+            <output id="out-sensitivity">1.00</output>
+          </label>
+          <label class="setting-row toggle-row">
+            <span><b>Invertir pitch</b><small>Invierte el eje ascendente</small></span>
+            <input type="checkbox" id="setting-invert">
+            <i class="toggle-visual"></i>
+          </label>
+        </div>
+        <div class="settings-group">
+          <h3>GRAPHICS</h3>
+          <label class="setting-row">
+            <span><b>Calidad gráfica</b><small>Vegetación, sombras y resolución</small></span>
+            <select id="setting-quality">
+              <option value="low">LOW — rendimiento móvil</option>
+              <option value="medium">MEDIUM — equilibrado</option>
+              <option value="high">HIGH — máxima calidad</option>
+            </select>
+          </label>
+          <label class="setting-row toggle-row">
+            <span><b>Mostrar FPS</b><small>Contador de rendimiento</small></span>
+            <input type="checkbox" id="setting-fps">
+            <i class="toggle-visual"></i>
+          </label>
+        </div>
+        <div class="settings-group">
+          <h3>ENVIRONMENT & AUDIO</h3>
+          <label class="setting-row">
+            <span><b>Ciclo del día</b><small>Duración de un día completo (segundos)</small></span>
+            <input type="range" id="setting-daylength" min="120" max="1800" step="30">
+            <output id="out-daylength">600</output>
+          </label>
+          <label class="setting-row toggle-row">
+            <span><b>Audio</b><small>Motor procedural, viento y efectos</small></span>
+            <input type="checkbox" id="setting-audio">
+            <i class="toggle-visual"></i>
+          </label>
+          <label class="setting-row">
+            <span><b>Volumen</b><small>Volumen general</small></span>
+            <input type="range" id="setting-volume" min="0" max="1" step="0.05">
+            <output id="out-volume">0.70</output>
+          </label>
+        </div>
+        <div class="settings-actions">
+          <button class="btn btn-ghost" data-action="reset-settings">Restaurar valores</button>
+          <button class="btn btn-primary small" data-action="back">DONE</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- PAUSE -->
+    <section id="screen-pause" class="screen modal-screen hidden">
+      <div class="modal glass">
+        <div class="modal-eyebrow">FLIGHT PAUSED</div>
+        <h2>PAUSA</h2>
+        <p>El avión te espera en el aire.</p>
+        <div class="modal-actions">
+          <button class="btn btn-primary small" data-action="resume">RESUME FLIGHT</button>
+          <button class="btn small" data-action="restart">RESTART FLIGHT</button>
+          <button class="btn small" data-action="settings">SETTINGS</button>
+          <button class="btn small" data-action="menu">MAIN MENU</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- CRASH -->
+    <section id="screen-crash" class="screen modal-screen hidden">
+      <div class="modal glass crash-modal">
+        <div class="modal-eyebrow warning">SIGNAL LOST</div>
+        <h2>AERONAVE SIN CONTROL</h2>
+        <p id="crash-reason">Impacto contra el terreno.</p>
+        <div class="modal-actions">
+          <button class="btn btn-primary small" data-action="restart">RETRY FLIGHT</button>
+          <button class="btn small" data-action="menu">MAIN MENU</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- MISSION COMPLETE -->
+    <section id="screen-complete" class="screen modal-screen hidden">
+      <div class="modal glass complete-modal">
+        <div class="modal-eyebrow success">MISSION ACCOMPLISHED</div>
+        <h2 id="complete-title">RUTA COMPLETADA</h2>
+        <div class="complete-stats">
+          <div><span>SCORE</span><strong id="complete-score">0</strong></div>
+          <div><span>TIME</span><strong id="complete-time">00:00</strong></div>
+          <div><span>BEST</span><strong id="complete-best">—</strong></div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-primary small" data-action="restart-challenge">FLY AGAIN</button>
+          <button class="btn small" data-action="menu">MAIN MENU</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============================ CINEMATIC OVERLAY ============================ -->
+  <div id="cinematic" class="cinematic hidden"><i></i><i></i><div class="cinematic-label">INITIATING FLIGHT</div></div>
+
+  <!-- ============================ TOUCH CONTROLS ============================ -->
+  <div id="touch-controls" class="touch-controls hidden">
+    <div id="joystick-zone" class="joystick-zone">
+      <div id="joystick-base" class="joystick-base"><i id="joystick-knob"></i></div>
+      <span class="joystick-hint">PITCH / ROLL</span>
+    </div>
+    <div class="touch-buttons">
+      <button class="touch-btn small" data-touch="camera">CAM</button>
+      <button class="touch-btn small" data-touch="gear">GEAR</button>
+      <button class="touch-btn" data-touch="brake">BRAKE</button>
+      <button class="touch-btn throttle-up" data-touch="throttle-up">THR +</button>
+      <button class="touch-btn throttle-down" data-touch="throttle-down">THR −</button>
+      <button class="touch-btn small" data-touch="menu">Ⅱ</button>
+    </div>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

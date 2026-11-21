@@ -1,0 +1,21 @@
+{
+  "name": "skybound-flight-simulator",
+  "version": "1.0.0",
+  "description": "SKYBOUND - 3D flight simulator for the browser, built with Three.js and Web Audio API.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "dev": "node server.mjs",
+    "check": "node --check src/main.js && node --check src/game/GameManager.js"
+  },
+  "keywords": [
+    "threejs",
+    "flight-simulator",
+    "webgl",
+    "game"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "three": "0.187.0"
+  }
+}
