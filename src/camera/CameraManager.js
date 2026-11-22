@@ -18,6 +18,7 @@ export class CameraManager {
     this.tempQuat = new THREE.Quaternion();
     this.tempPitch = new THREE.Quaternion();
     this.transition = null;
+    this.tempMatrix = new THREE.Matrix4();
     this.freePosition = new THREE.Vector3(0, 180, 160);
     this.freeYaw = 0;
     this.freePitch = -0.15;
@@ -29,6 +30,15 @@ export class CameraManager {
     this.freeYaw = Math.atan2(dir.x, -dir.z);
     this.freePitch = Math.asin(clamp(dir.y, -1, 1));
     this.freePosition.copy(this.camera.position);
+  }
+
+  // Object3D.lookAt orienta el eje +Z hacia el objetivo, pero una cámara mira por -Z:
+  // copiar ese quaternion dejaba la vista girada 180°. Matrix4.lookAt usa la
+  // convención de cámara, así que el resultado apunta al objetivo.
+  lookQuaternion(eye, target, up) {
+    this.tempMatrix.lookAt(eye, target, up);
+    this.dummy.quaternion.setFromRotationMatrix(this.tempMatrix);
+    return this.dummy.quaternion;
   }
 
   setMode(mode) {
@@ -100,9 +110,7 @@ export class CameraManager {
 
     this.tempPos.copy(position).add(offset.applyQuaternion(q));
     const blendedUp = WORLD_UP.clone().lerp(up, upBlend).normalize();
-    this.dummy.position.copy(this.tempPos);
-    this.dummy.up.copy(blendedUp);
-    this.dummy.lookAt(lookTarget);
+    this.lookQuaternion(this.tempPos, lookTarget, blendedUp);
     return {
       position: this.tempPos.clone(),
       quaternion: this.dummy.quaternion.clone(),
@@ -140,9 +148,7 @@ export class CameraManager {
     this.camera.position.lerp(this.tempPos, 1 - Math.exp(-1.6 * dt));
     this.camera.up.lerp(WORLD_UP, 1 - Math.exp(-4 * dt));
     this.tempTarget.copy(p).add(new THREE.Vector3(0, 0.5, 0));
-    this.dummy.position.copy(this.camera.position);
-    this.dummy.up.copy(this.camera.up);
-    this.dummy.lookAt(this.tempTarget);
+    this.lookQuaternion(this.camera.position, this.tempTarget, this.camera.up);
     this.camera.quaternion.slerp(this.dummy.quaternion, 1 - Math.exp(-3 * dt));
     this.camera.fov = damp(this.camera.fov, 52, 2, dt);
     this.camera.updateProjectionMatrix();
