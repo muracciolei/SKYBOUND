@@ -37,19 +37,15 @@ npx serve .
 
 ## Desplegar en GitHub Pages
 
-El despliegue lo hace el workflow [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml):
+Publica GitHub solo, con su build por rama: no hay workflow de Pages. Cada push a `main` queda publicado en `https://<usuario>.github.io/<repositorio>/` tal cual, sin build ni dependencias.
 
-1. Se ejecuta en cada push a `main` (y también a mano desde **Actions → Deploy to GitHub Pages → Run workflow**).
-2. Empaqueta la raíz del repositorio tal cual y la publica con `actions/deploy-pages`, sin build ni dependencias.
-3. El resultado queda en `https://<usuario>.github.io/<repositorio>/`.
-
-Configuración inicial, una sola vez:
+Configuración, una sola vez:
 
 1. En el repositorio, entra en **Settings → Pages**.
-2. En **Build and deployment → Source**, elige **GitHub Actions**.
-3. Guarda. El siguiente push a `main` publica el sitio (también puedes lanzarlo desde la pestaña **Actions**).
+2. En **Build and deployment → Source**, elige **Deploy from a branch**.
+3. Rama `main`, carpeta `/ (root)`.
 
-> La fuente debe ser **GitHub Actions**. Si la dejas en *Deploy from a branch*, GitHub publica el sitio por su cuenta en cada push y el workflow detecta ese modo y se salta el despliegue, así que nunca hay dos publicadores pisándose; igual conviene dejar una sola fuente.
+> Es el único publicador del repositorio. Si algún día cambiás **Source** a *GitHub Actions*, el sitio deja de actualizarse hasta que agregues un workflow que lo despliegue.
 
 No hay que cambiar rutas ni ejecutar un build: Three.js está incluido en `vendor/three/` y `index.html` usa rutas relativas y un *import map*.
 
