@@ -37,11 +37,19 @@ npx serve .
 
 ## Desplegar en GitHub Pages
 
-1. Sube el repositorio completo a GitHub.
-2. En el repositorio, entra en **Settings → Pages**.
-3. En **Build and deployment**, selecciona **Deploy from a branch**.
-4. Elige la rama `main` y la carpeta `/ (root)`.
-5. Guarda. Tu juego estará disponible en `https://<usuario>.github.io/<repositorio>/`.
+El despliegue lo hace el workflow [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml):
+
+1. Se ejecuta en cada push a `main` (y también a mano desde **Actions → Deploy to GitHub Pages → Run workflow**).
+2. Empaqueta la raíz del repositorio tal cual y la publica con `actions/deploy-pages`, sin build ni dependencias.
+3. El resultado queda en `https://<usuario>.github.io/<repositorio>/`.
+
+Configuración inicial, una sola vez:
+
+1. En el repositorio, entra en **Settings → Pages**.
+2. En **Build and deployment → Source**, elige **GitHub Actions**.
+3. Guarda. El siguiente push a `main` publica el sitio (también puedes lanzarlo desde la pestaña **Actions**).
+
+> La fuente debe ser **GitHub Actions**. Si la dejas en *Deploy from a branch*, GitHub ejecutará además su propio build por rama en cada push: dos publicadores escribiendo el mismo sitio, que terminan pisándose.
 
 No hay que cambiar rutas ni ejecutar un build: Three.js está incluido en `vendor/three/` y `index.html` usa rutas relativas y un *import map*.
 
