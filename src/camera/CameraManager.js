@@ -36,6 +36,7 @@ export class CameraManager {
     this.freePendingInit = false;
     this.tempAdjust = new THREE.Quaternion();
     this.pitchAxis = new THREE.Vector3(1, 0, 0);
+    this.framingEngaged = false;
     this.fitCamera = new THREE.PerspectiveCamera(66, 1, 0.2, 1200);
     this.fitCorner = new THREE.Vector3();
     this.fitDir = new THREE.Vector3();
@@ -103,7 +104,13 @@ export class CameraManager {
         // Cámara ya suavizada: solo se corrige si el avión se sale de la zona, y
         // amortiguado. Centrar acá la hacía temblar contra el suavizado.
         const overflow = top > FIT_TOP ? top - FIT_TOP : (bottom < -FIT_BOTTOM ? bottom + FIT_BOTTOM : 0);
-        if (Math.abs(overflow) < 0.02) return;
+        // Histéresis: entra cuando el avión se sale de verdad y no se suelta hasta
+        // volver adentro, en vez de prenderse y apagarse en el umbral.
+        if (this.framingEngaged ? overflow === 0 : Math.abs(overflow) < 0.02) {
+          this.framingEngaged = false;
+          return;
+        }
+        this.framingEngaged = true;
         delta = clamp(overflow * halfFovTan, -0.06, 0.06) * gain;
       }
 
