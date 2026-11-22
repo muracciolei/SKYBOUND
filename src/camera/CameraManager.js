@@ -52,7 +52,7 @@ export class CameraManager {
   // y virajes la caja envolvente crece y se sale de cuadro o se mete detrás del
   // indicador de actitud. Se mide dónde cae sobre la cámara real y se corrige:
   // primero inclinando, y si aun así no entra, alejando la cámara.
-  solveFraming(eye, quaternion, position, q, fov, aspect) {
+  solveFraming(eye, quaternion, position, q, fov, aspect, gain = 1) {
     const cam = this.fitCamera;
     cam.up.copy(WORLD_UP);
     cam.aspect = aspect;
@@ -79,20 +79,34 @@ export class CameraManager {
       }
 
       const height = top - bottom;
-      if (height > zoneHeight * 0.98) {
-        // No entra en la zona libre: la cámara retrocede hasta que el avión quepa.
+      if (height > zoneHeight) {
+        // No entra en la zona libre: la cámara retrocede hasta que el avión quepa,
+        // con margen de histéresis para no activarse y desactivarse al borde.
         const distance = eye.distanceTo(position);
-        const push = Math.min((height / (zoneHeight * 0.9) - 1) * distance, distance * 0.8);
-        this.fitDir.copy(position).sub(eye).normalize();
-        eye.addScaledVector(this.fitDir, -push);
-        continue;
+        const target = distance * (height / (zoneHeight * 0.9));
+        const push = Math.min((target - distance) * 0.5, distance * 0.25) * gain;
+        if (push > 0.005) {
+          this.fitDir.copy(position).sub(eye).normalize();
+          eye.addScaledVector(this.fitDir, -push);
+          continue;
+        }
       }
 
-      // Se centra la caja en la zona libre, que queda entera debajo del HUD.
-      const error = (top + bottom) / 2 - zoneCenter;
-      if (Math.abs(error) < 0.03) return;
+      let delta;
+      if (gain >= 1) {
+        // Pose: el centro de la caja va al centro de la zona libre, con el ángulo
+        // exacto (aplicar el error linealizado se pasaba de largo).
+        const error = Math.atan(((top + bottom) / 2) * halfFovTan) - Math.atan(zoneCenter * halfFovTan);
+        if (Math.abs(error) < 0.004) return;
+        delta = clamp(error, -0.05, 0.05);
+      } else {
+        // Cámara ya suavizada: solo se corrige si el avión se sale de la zona, y
+        // amortiguado. Centrar acá la hacía temblar contra el suavizado.
+        const overflow = top > FIT_TOP ? top - FIT_TOP : (bottom < -FIT_BOTTOM ? bottom + FIT_BOTTOM : 0);
+        if (Math.abs(overflow) < 0.02) return;
+        delta = clamp(overflow * halfFovTan, -0.06, 0.06) * gain;
+      }
 
-      const delta = clamp(error * halfFovTan, -0.15, 0.15);
       this.tempAdjust.setFromAxisAngle(this.pitchAxis, delta);
       quaternion.multiply(this.tempAdjust);
     }
@@ -300,7 +314,10 @@ export class CameraManager {
     // Encuadre sobre la cámara ya suavizada: así el avión no se escapa durante
     // los tirones de mando, cuando la cámara todavía va con retardo.
     if (this.mode !== 'COCKPIT') {
-      this.solveFraming(this.camera.position, this.camera.quaternion, state.position, state.quaternion, this.camera.fov, this.camera.aspect);
+      // Amortiguado: la corrección se reparte en varios frames en vez de saltar
+      // entera contra el suavizado, que la hacía temblar.
+      const fitGain = 1 - Math.exp(-18 * dt);
+      this.solveFraming(this.camera.position, this.camera.quaternion, state.position, state.quaternion, this.camera.fov, this.camera.aspect, fitGain);
     }
   }
 }
