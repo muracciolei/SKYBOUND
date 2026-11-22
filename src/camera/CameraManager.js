@@ -3,6 +3,9 @@ import { CAMERA_MODES } from '../utils/Config.js';
 import { clamp, damp, smoothstep } from '../utils/MathUtils.js';
 
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
+// Altura de pantalla donde se compone el avión (0.5 = centro). El HUD ocupa el
+// centro, así que el avión se deja por debajo del indicador de actitud.
+const SCREEN_ANCHOR = 0.72;
 
 export class CameraManager {
   constructor(camera, settings) {
@@ -23,6 +26,15 @@ export class CameraManager {
     this.freeYaw = 0;
     this.freePitch = -0.15;
     this.freePendingInit = false;
+    this.tempAdjust = new THREE.Quaternion();
+    this.pitchAxis = new THREE.Vector3(1, 0, 0);
+  }
+
+  // Inclinación necesaria para que el avión quede a `anchor` de la altura de
+  // pantalla (0.5 = centro), compensando que el HUD ocupa el centro.
+  anchorPitch(fov, anchor) {
+    const halfFov = (fov * Math.PI) / 180 / 2;
+    return Math.atan((2 * anchor - 1) * Math.tan(halfFov));
   }
 
   // La cámara libre se planta detrás y por encima del avión, apuntándolo, en vez
@@ -31,11 +43,11 @@ export class CameraManager {
     this.freePendingInit = false;
     const offset = new THREE.Vector3(0, 4.2, 18).applyQuaternion(state.quaternion);
     this.freePosition.copy(state.position).add(offset);
-    // Apunta un poco por encima del avión para que quede debajo del centro del HUD.
-    const aim = state.position.clone().add(new THREE.Vector3(0, 3.4, 0));
-    const toPlane = aim.sub(this.freePosition).normalize();
+    // Mira el avión y luego inclina para dejarlo debajo del indicador de actitud.
+    const toPlane = state.position.clone().sub(this.freePosition).normalize();
     this.freeYaw = Math.atan2(toPlane.x, -toPlane.z);
-    this.freePitch = clamp(Math.asin(clamp(toPlane.y, -1, 1)), -1.35, 1.35);
+    const pitch = Math.asin(clamp(toPlane.y, -1, 1)) + this.anchorPitch(68, SCREEN_ANCHOR);
+    this.freePitch = clamp(pitch, -1.35, 1.35);
   }
 
   // Object3D.lookAt orienta el eje +Z hacia el objetivo, pero una cámara mira por -Z:
@@ -87,6 +99,7 @@ export class CameraManager {
     let lookTarget = new THREE.Vector3();
     let fov = 66;
     let upBlend = 0.8;
+    let anchor = 0;
 
     if (mode === 'COCKPIT') {
       offset.set(0, 1.18, -1.55);
@@ -103,12 +116,14 @@ export class CameraManager {
       offset.set(0, 5.6, 21 + Math.min(speed * 0.09, 8));
       fov = 62 + Math.min(speed * 0.15, 12);
       upBlend = 0.42;
-      lookTarget.copy(position).addScaledVector(forward, 16).addScaledVector(up, 1.4);
+      lookTarget.copy(position);
+      anchor = SCREEN_ANCHOR;
     } else if (mode === 'THIRD') {
-      offset.set(0, 3.4, 12.5 + Math.min(speed * 0.035, 4));
+      offset.set(0, 3.4, 15.5 + Math.min(speed * 0.035, 4));
       fov = 64 + Math.min(speed * 0.07, 7);
       upBlend = 0.72;
-      lookTarget.copy(position).addScaledVector(forward, 11).addScaledVector(up, 0.8);
+      lookTarget.copy(position);
+      anchor = SCREEN_ANCHOR;
     } else {
       offset.set(0, 4, 16);
       lookTarget.copy(position).addScaledVector(forward, 10);
@@ -117,6 +132,10 @@ export class CameraManager {
     this.tempPos.copy(position).add(offset.applyQuaternion(q));
     const blendedUp = WORLD_UP.clone().lerp(up, upBlend).normalize();
     this.lookQuaternion(this.tempPos, lookTarget, blendedUp);
+    if (anchor) {
+      this.tempAdjust.setFromAxisAngle(this.pitchAxis, this.anchorPitch(fov, anchor));
+      this.dummy.quaternion.multiply(this.tempAdjust);
+    }
     return {
       position: this.tempPos.clone(),
       quaternion: this.dummy.quaternion.clone(),
@@ -199,8 +218,11 @@ export class CameraManager {
     }
 
     const pose = this.computePose(this.mode, state);
-    const lambda = this.mode === 'CHASE' ? 3.4 : this.mode === 'COCKPIT' ? 18 : 6;
-    const rotLambda = this.mode === 'CHASE' ? 5 : this.mode === 'COCKPIT' ? 22 : 8;
+    // A más velocidad, el seguimiento suave tiene que ser más firme: si no, la
+    // cámara queda decenas de metros atrás y el avión se achica en el centro.
+    const speed = state.speed ?? 0;
+    const lambda = (this.mode === 'CHASE' ? 3.4 : this.mode === 'COCKPIT' ? 18 : 6) + speed * 0.09;
+    const rotLambda = (this.mode === 'CHASE' ? 5 : this.mode === 'COCKPIT' ? 22 : 8) + speed * 0.05;
 
     if (this.mode === 'COCKPIT') {
       this.camera.position.copy(pose.position);
