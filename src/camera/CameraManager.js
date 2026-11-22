@@ -6,19 +6,26 @@ const WORLD_UP = new THREE.Vector3(0, 1, 0);
 // Altura de pantalla donde se compone el avión (0.5 = centro). El HUD ocupa el
 // centro, así que el avión se deja por debajo del indicador de actitud.
 const SCREEN_ANCHOR = 0.72;
-// Caja envolvente del avión en coordenadas locales (medida sobre el modelo de Aircraft.js).
-const AIRCRAFT_X = [-7.22, 7.22];
-const AIRCRAFT_Y = [-2.72, 2.79];
-const AIRCRAFT_Z = [-5.41, 4.87];
 // Zona libre en pantalla para el avión (NDC, 1 = borde del cuadro): abajo del
 // cuadro y por debajo del indicador de actitud.
 const FIT_BOTTOM = 0.84;
 const FIT_TOP = -0.12;
 
 export class CameraManager {
-  constructor(camera, settings) {
+  constructor(camera, settings, bounds) {
     this.camera = camera;
     this.settings = settings;
+    // Esquinas de la caja envolvente del avión, tal cual la mide el modelo.
+    this.fitCorners = [];
+    if (bounds && !bounds.isEmpty()) {
+      for (const x of [bounds.min.x, bounds.max.x]) {
+        for (const y of [bounds.min.y, bounds.max.y]) {
+          for (const z of [bounds.min.z, bounds.max.z]) {
+            this.fitCorners.push(new THREE.Vector3(x, y, z));
+          }
+        }
+      }
+    }
     this.modes = CAMERA_MODES;
     this.modeIndex = 0;
     this.mode = this.modes[0];
@@ -36,7 +43,7 @@ export class CameraManager {
     this.freePendingInit = false;
     this.tempAdjust = new THREE.Quaternion();
     this.pitchAxis = new THREE.Vector3(1, 0, 0);
-    this.framingEngaged = false;
+    this.framingStrength = 0;
     this.fitCamera = new THREE.PerspectiveCamera(66, 1, 0.2, 1200);
     this.fitCorner = new THREE.Vector3();
     this.fitDir = new THREE.Vector3();
@@ -54,6 +61,7 @@ export class CameraManager {
   // indicador de actitud. Se mide dónde cae sobre la cámara real y se corrige:
   // primero inclinando, y si aun así no entra, alejando la cámara.
   solveFraming(eye, quaternion, position, q, fov, aspect, gain = 1) {
+    if (!this.fitCorners.length) return;
     const cam = this.fitCamera;
     cam.up.copy(WORLD_UP);
     cam.aspect = aspect;
@@ -69,14 +77,10 @@ export class CameraManager {
       cam.updateMatrixWorld(true);
       let bottom = Infinity;
       let top = -Infinity;
-      for (const x of AIRCRAFT_X) {
-        for (const y of AIRCRAFT_Y) {
-          for (const z of AIRCRAFT_Z) {
-            this.fitCorner.set(x, y, z).applyQuaternion(q).add(position).project(cam);
-            if (this.fitCorner.y < bottom) bottom = this.fitCorner.y;
-            if (this.fitCorner.y > top) top = this.fitCorner.y;
-          }
-        }
+      for (const corner of this.fitCorners) {
+        this.fitCorner.copy(corner).applyQuaternion(q).add(position).project(cam);
+        if (this.fitCorner.y < bottom) bottom = this.fitCorner.y;
+        if (this.fitCorner.y > top) top = this.fitCorner.y;
       }
 
       const height = top - bottom;
@@ -104,14 +108,13 @@ export class CameraManager {
         // Cámara ya suavizada: solo se corrige si el avión se sale de la zona, y
         // amortiguado. Centrar acá la hacía temblar contra el suavizado.
         const overflow = top > FIT_TOP ? top - FIT_TOP : (bottom < -FIT_BOTTOM ? bottom + FIT_BOTTOM : 0);
-        // Histéresis: entra cuando el avión se sale de verdad y no se suelta hasta
-        // volver adentro, en vez de prenderse y apagarse en el umbral.
-        if (this.framingEngaged ? overflow === 0 : Math.abs(overflow) < 0.02) {
-          this.framingEngaged = false;
-          return;
-        }
-        this.framingEngaged = true;
-        delta = clamp(overflow * halfFovTan, -0.06, 0.06) * gain;
+        // La corrección entra con una rampa que vale cero en el borde en vez de
+        // prender y apagar el corrector de golpe: ese escalón se veía como un
+        // temblor de un frame sí y otro no al rozar la zona.
+        const strength = smoothstep(0, 0.03, Math.abs(overflow));
+        this.framingStrength = strength;
+        if (strength <= 0) return;
+        delta = clamp(overflow * halfFovTan, -0.06, 0.06) * gain * strength;
       }
 
       this.tempAdjust.setFromAxisAngle(this.pitchAxis, delta);

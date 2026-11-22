@@ -65,7 +65,7 @@ export class GameManager {
         crash: (data) => this.onCrash(data)
       };
 
-      this.cameraManager = new CameraManager(this.engine.camera, this.settings);
+      this.cameraManager = new CameraManager(this.engine.camera, this.settings, this.aircraft.bounds);
       this.input = new InputManager(this.canvas, this.settings);
       this.audio = new AudioManager(this.settings);
       this.hud = new HUD();

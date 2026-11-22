@@ -89,6 +89,12 @@ export class Aircraft {
     this.buildDetails();
     this.buildInterior();
 
+    // Caja envolvente local medida sobre la malla real (exterior, incluido el
+    // disco de la hélice). La cámara la usa para encuadrar sin medidas a mano
+    // que se desfasan cuando cambia el modelo.
+    this.group.updateMatrixWorld(true);
+    this.bounds = new THREE.Box3().setFromObject(this.exterior);
+
     scene.add(this.group);
   }
 
