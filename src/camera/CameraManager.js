@@ -22,14 +22,20 @@ export class CameraManager {
     this.freePosition = new THREE.Vector3(0, 180, 160);
     this.freeYaw = 0;
     this.freePitch = -0.15;
-    this.initializeFreeFromCamera();
+    this.freePendingInit = false;
   }
 
-  initializeFreeFromCamera() {
-    const dir = this.camera.getWorldDirection(new THREE.Vector3());
-    this.freeYaw = Math.atan2(dir.x, -dir.z);
-    this.freePitch = Math.asin(clamp(dir.y, -1, 1));
-    this.freePosition.copy(this.camera.position);
+  // La cámara libre se planta detrás y por encima del avión, apuntándolo, en vez
+  // de heredar la posición de la vista anterior (que en COCKPIT queda dentro del fuselaje).
+  initializeFreeFromAircraft(state) {
+    this.freePendingInit = false;
+    const offset = new THREE.Vector3(0, 4.2, 18).applyQuaternion(state.quaternion);
+    this.freePosition.copy(state.position).add(offset);
+    // Apunta un poco por encima del avión para que quede debajo del centro del HUD.
+    const aim = state.position.clone().add(new THREE.Vector3(0, 3.4, 0));
+    const toPlane = aim.sub(this.freePosition).normalize();
+    this.freeYaw = Math.atan2(toPlane.x, -toPlane.z);
+    this.freePitch = clamp(Math.asin(clamp(toPlane.y, -1, 1)), -1.35, 1.35);
   }
 
   // Object3D.lookAt orienta el eje +Z hacia el objetivo, pero una cámara mira por -Z:
@@ -48,7 +54,7 @@ export class CameraManager {
     this.mode = mode;
     this.camera.near = mode === 'COCKPIT' ? 0.08 : 0.32;
     this.camera.updateProjectionMatrix();
-    if (mode === 'FREE') this.initializeFreeFromCamera();
+    if (mode === 'FREE') this.freePendingInit = true;
     return this.mode;
   }
 
@@ -187,6 +193,7 @@ export class CameraManager {
   update(dt, state, controls, input) {
     if (this.updateTransition(dt, state)) return;
     if (this.mode === 'FREE') {
+      if (this.freePendingInit && state) this.initializeFreeFromAircraft(state);
       this.updateFree(dt, controls, input);
       return;
     }
