@@ -6,6 +6,14 @@ const WORLD_UP = new THREE.Vector3(0, 1, 0);
 // Altura de pantalla donde se compone el avión (0.5 = centro). El HUD ocupa el
 // centro, así que el avión se deja por debajo del indicador de actitud.
 const SCREEN_ANCHOR = 0.72;
+// Caja envolvente del avión en coordenadas locales (medida sobre el modelo de Aircraft.js).
+const AIRCRAFT_X = [-7.22, 7.22];
+const AIRCRAFT_Y = [-2.72, 2.79];
+const AIRCRAFT_Z = [-5.41, 4.87];
+// Zona libre en pantalla para el avión (NDC, 1 = borde del cuadro): abajo del
+// cuadro y por debajo del indicador de actitud.
+const FIT_BOTTOM = 0.84;
+const FIT_TOP = -0.12;
 
 export class CameraManager {
   constructor(camera, settings) {
@@ -28,6 +36,9 @@ export class CameraManager {
     this.freePendingInit = false;
     this.tempAdjust = new THREE.Quaternion();
     this.pitchAxis = new THREE.Vector3(1, 0, 0);
+    this.fitCamera = new THREE.PerspectiveCamera(66, 1, 0.2, 1200);
+    this.fitCorner = new THREE.Vector3();
+    this.fitDir = new THREE.Vector3();
   }
 
   // Inclinación necesaria para que el avión quede a `anchor` de la altura de
@@ -35,6 +46,56 @@ export class CameraManager {
   anchorPitch(fov, anchor) {
     const halfFov = (fov * Math.PI) / 180 / 2;
     return Math.atan((2 * anchor - 1) * Math.tan(halfFov));
+  }
+
+  // Componer por el centro del avión alcanza en vuelo nivelado, pero en trepadas
+  // y virajes la caja envolvente crece y se sale de cuadro o se mete detrás del
+  // indicador de actitud. Se mide dónde cae sobre la cámara real y se corrige:
+  // primero inclinando, y si aun así no entra, alejando la cámara.
+  solveFraming(eye, quaternion, position, q, fov, aspect) {
+    const cam = this.fitCamera;
+    cam.up.copy(WORLD_UP);
+    cam.aspect = aspect;
+    cam.fov = fov;
+    cam.updateProjectionMatrix();
+    const halfFovTan = Math.tan((fov * Math.PI) / 180 / 2);
+    const zoneHeight = FIT_TOP + FIT_BOTTOM;
+    const zoneCenter = (FIT_TOP - FIT_BOTTOM) / 2;
+
+    for (let pass = 0; pass < 4; pass++) {
+      cam.position.copy(eye);
+      cam.quaternion.copy(quaternion);
+      cam.updateMatrixWorld(true);
+      let bottom = Infinity;
+      let top = -Infinity;
+      for (const x of AIRCRAFT_X) {
+        for (const y of AIRCRAFT_Y) {
+          for (const z of AIRCRAFT_Z) {
+            this.fitCorner.set(x, y, z).applyQuaternion(q).add(position).project(cam);
+            if (this.fitCorner.y < bottom) bottom = this.fitCorner.y;
+            if (this.fitCorner.y > top) top = this.fitCorner.y;
+          }
+        }
+      }
+
+      const height = top - bottom;
+      if (height > zoneHeight * 0.98) {
+        // No entra en la zona libre: la cámara retrocede hasta que el avión quepa.
+        const distance = eye.distanceTo(position);
+        const push = Math.min((height / (zoneHeight * 0.9) - 1) * distance, distance * 0.8);
+        this.fitDir.copy(position).sub(eye).normalize();
+        eye.addScaledVector(this.fitDir, -push);
+        continue;
+      }
+
+      // Se centra la caja en la zona libre, que queda entera debajo del HUD.
+      const error = (top + bottom) / 2 - zoneCenter;
+      if (Math.abs(error) < 0.03) return;
+
+      const delta = clamp(error * halfFovTan, -0.15, 0.15);
+      this.tempAdjust.setFromAxisAngle(this.pitchAxis, delta);
+      quaternion.multiply(this.tempAdjust);
+    }
   }
 
   // La cámara libre se planta detrás y por encima del avión, apuntándolo, en vez
@@ -135,6 +196,7 @@ export class CameraManager {
     if (anchor) {
       this.tempAdjust.setFromAxisAngle(this.pitchAxis, this.anchorPitch(fov, anchor));
       this.dummy.quaternion.multiply(this.tempAdjust);
+      this.solveFraming(this.tempPos, this.dummy.quaternion, position, q, fov, this.camera.aspect);
     }
     return {
       position: this.tempPos.clone(),
@@ -235,5 +297,10 @@ export class CameraManager {
     }
     this.camera.fov = damp(this.camera.fov, pose.fov, 2.5, dt);
     this.camera.updateProjectionMatrix();
+    // Encuadre sobre la cámara ya suavizada: así el avión no se escapa durante
+    // los tirones de mando, cuando la cámara todavía va con retardo.
+    if (this.mode !== 'COCKPIT') {
+      this.solveFraming(this.camera.position, this.camera.quaternion, state.position, state.quaternion, this.camera.fov, this.camera.aspect);
+    }
   }
 }
