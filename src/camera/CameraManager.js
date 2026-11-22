@@ -157,7 +157,9 @@ export class CameraManager {
 
   updateFree(dt, controls, input) {
     const delta = input.consumeMouseDelta();
-    this.freeYaw -= delta.x * 0.0028;
+    // Arrastre estilo "mirar": a la derecha gira a la derecha y hacia abajo
+    // inclina la vista hacia abajo, igual que el eje vertical.
+    this.freeYaw += delta.x * 0.0028;
     this.freePitch = clamp(this.freePitch - delta.y * 0.0025, -1.35, 1.35);
 
     const speed = (controls.keys.has('ShiftLeft') || controls.keys.has('ShiftRight') ? 240 : 95);
