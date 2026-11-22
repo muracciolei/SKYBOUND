@@ -297,11 +297,20 @@
     <div class="touch-buttons">
       <button class="touch-btn small" data-touch="camera">CAM</button>
       <button class="touch-btn small" data-touch="gear">GEAR</button>
-      <button class="touch-btn" data-touch="brake">BRAKE</button>
-      <button class="touch-btn throttle-up" data-touch="throttle-up">THR +</button>
+      <button class="touch-btn small" data-touch="yaw-left">◀ YAW</button>
+      <button class="touch-btn small" data-touch="yaw-right">YAW ▶</button>
+      <button class="touch-btn small" data-touch="brake">BRAKE</button>
+      <button class="touch-btn small" data-touch="menu" aria-label="Pausa">❚❚</button>
       <button class="touch-btn throttle-down" data-touch="throttle-down">THR −</button>
-      <button class="touch-btn small" data-touch="menu">Ⅱ</button>
+      <button class="touch-btn throttle-up" data-touch="throttle-up">THR +</button>
     </div>
+  </div>
+
+  <!-- ============================ ORIENTACIÓN ============================ -->
+  <div id="rotate-hint" class="rotate-hint">
+    <div class="rotate-icon"><span></span></div>
+    <p>GIRÁ EL TELÉFONO</p>
+    <small>SKYBOUND se vuela en horizontal</small>
   </div>
 
   <script type="module" src="./src/main.js"></script>

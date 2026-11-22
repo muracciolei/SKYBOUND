@@ -11,6 +11,16 @@ const DEFAULTS = {
   showFPS: false
 };
 
+// Calidad de arranque según el aparato: en un teléfono HIGH (pixel ratio 2,
+// sombras 2048, 4200 árboles) no llega ni a 20 fps. Se usa solo la primera vez;
+// después manda lo que el jugador haya elegido.
+function detectQuality() {
+  const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+  if (!coarse) return 'high';
+  const minSide = Math.min(window.screen?.width || 0, window.screen?.height || 0);
+  return minSide >= 760 ? 'medium' : 'low';
+}
+
 export class Settings {
   constructor() {
     this.values = { ...DEFAULTS };
@@ -35,13 +45,16 @@ export class Settings {
 
   reset() {
     this.values = { ...DEFAULTS };
+    this.values.quality = detectQuality();
     this.save();
   }
 
   load() {
+    let stored = false;
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
+        stored = true;
         const parsed = JSON.parse(raw);
         for (const key of Object.keys(DEFAULTS)) {
           if (parsed[key] !== undefined) this.values[key] = parsed[key];
@@ -50,6 +63,7 @@ export class Settings {
     } catch (error) {
       console.warn('SKYBOUND: no se pudieron cargar ajustes', error);
     }
+    if (!stored) this.values.quality = detectQuality();
     try {
       const raw = localStorage.getItem(RECORDS_KEY);
       if (raw) this.records = JSON.parse(raw) || {};

@@ -67,6 +67,7 @@ export class GameManager {
 
       this.cameraManager = new CameraManager(this.engine.camera, this.settings, this.aircraft.bounds);
       this.input = new InputManager(this.canvas, this.settings);
+      this.bindMobile();
       this.audio = new AudioManager(this.settings);
       this.hud = new HUD();
 
@@ -90,6 +91,14 @@ export class GameManager {
       this.state = 'menu';
       this.ui.show('menu');
       this.cameraManager.updateMenu(0, this.demoState);
+      // Si el aparato no sostiene los fps, el motor baja la calidad solo.
+      this.engine.adaptiveEnabled = true;
+      this.engine.onQualityChange = (name) => {
+        this.settings.set('quality', name);
+        this.ui?.syncSettings();
+        this.applySetting('quality', name);
+        this.hud.showToast(`CALIDAD ${QUALITY[name]?.label ?? name} AUTOMÁTICA`, 'warning');
+      };
       this.loop();
     } catch (error) {
       console.error('SKYBOUND: error de inicialización', error);
@@ -97,6 +106,39 @@ export class GameManager {
       const detail = document.getElementById('loading-detail');
       if (detail) detail.style.color = '#ff6b6b';
     }
+  }
+
+  /* ============================== MOBILE ============================== */
+
+  bindMobile() {
+    if (!this.input?.isTouch) return;
+    // En vertical no se puede volar: se avisa con un cartel y se pausa.
+    this.portrait = window.matchMedia('(orientation: portrait)');
+    this.portrait.addEventListener?.('change', (event) => {
+      if (event.matches && this.state === 'playing') this.pause();
+    });
+  }
+
+  // Pantalla completa y horizontal al empezar a volar: en el teléfono las barras
+  // del navegador se comen la pantalla y el pulgar tapa medio cuadro. Tiene que
+  // correr dentro del gesto del toque, antes de cualquier await.
+  enterImmersive() {
+    if (!this.input?.isTouch) return;
+    try {
+      if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+        document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
+      }
+      const orientation = window.screen?.orientation;
+      if (orientation?.lock) Promise.resolve(orientation.lock('landscape')).catch(() => {});
+    } catch {
+      /* el navegador no lo permite; se juega igual */
+    }
+  }
+
+  controlHint() {
+    return this.input?.isTouch
+      ? 'JOYSTICK pitch/roll · THR potencia · YAW timón · CAM · GEAR · ❚❚ pausa'
+      : 'SHIFT acelerar · CTRL reducir · W/S pitch · A/D roll · Q/E yaw · C cámara · F tren · R reiniciar';
   }
 
   /* ============================== FLIGHT SETUP ============================== */
@@ -135,6 +177,7 @@ export class GameManager {
     if (this.state === 'transition') return;
     this.lastStartMode = mode;
     if (!this.currentChallengeId) this.missions.stop();
+    this.enterImmersive();
     await this.audio.start();
 
     if (mode === 'runway') this.resetToRunway();
@@ -157,7 +200,7 @@ export class GameManager {
     const targetMode = this.cameraManager.mode === 'FREE' ? 'CHASE' : this.cameraManager.mode;
     this.cameraManager.startTransition(targetMode, this.physics.getState());
     this.aircraft.setCameraMode(targetMode);
-    this.hud.setHint('SHIFT acelerar · CTRL reducir · W/S pitch · A/D roll · Q/E yaw · C cámara · F tren · R reiniciar');
+    this.hud.setHint(this.controlHint());
   }
 
   startChallenge(id) {
@@ -376,8 +419,13 @@ export class GameManager {
       this.input.freeLookEnabled = mode === 'FREE';
       this.hud.showToast(`CAMERA — ${mode}`);
       this.audio.ui();
-      if (mode === 'FREE') this.hud.setHint('CÁMARA LIBRE · arrastra para mirar · W/S avanzar · A/D lateral · Q/E altura');
-      else this.hud.setHint('SHIFT acelerar · CTRL reducir · W/S pitch · A/D roll · Q/E yaw · C cámara · F tren · R reiniciar');
+      if (mode === 'FREE') {
+        this.hud.setHint(this.input?.isTouch
+          ? 'CÁMARA LIBRE · arrastrá para mirar · joystick para moverte'
+          : 'CÁMARA LIBRE · arrastra para mirar · W/S avanzar · A/D lateral · Q/E altura');
+      } else {
+        this.hud.setHint(this.controlHint());
+      }
     }
     if (this.input.consumeAction('gear')) {
       this.physics.gearExtended = !this.physics.gearExtended;

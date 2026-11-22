@@ -27,11 +27,28 @@ export class Engine {
     this.frameCount = 0;
     this.fpsTimer = 0;
     this.fps = 0;
+    // Bajar calidad sola si el aparato no da abasto (teléfonos con pantalla
+    // grande, tablets viejas): un juego que va a 20 fps no se puede jugar.
+    this.adaptiveEnabled = false;
+    this.lowFpsStreak = 0;
+    this.onQualityChange = null;
 
     this.setQuality(settings.get('quality'));
     this.resize();
     window.addEventListener('resize', () => this.resize(), { passive: true });
     window.addEventListener('orientationchange', () => setTimeout(() => this.resize(), 180), { passive: true });
+  }
+
+  downgradeQuality() {
+    const order = ['low', 'medium', 'high'];
+    const index = order.indexOf(this.qualityName);
+    if (index <= 0) {
+      this.adaptiveEnabled = false;
+      return;
+    }
+    const next = order[index - 1];
+    this.setQuality(next);
+    this.onQualityChange?.(next);
   }
 
   setQuality(name) {
@@ -65,6 +82,14 @@ export class Engine {
       this.fps = Math.round(this.frameCount / this.fpsTimer);
       this.frameCount = 0;
       this.fpsTimer = 0;
+      if (this.adaptiveEnabled && !document.hidden) {
+        this.lowFpsStreak = this.fps < 42 ? this.lowFpsStreak + 1 : 0;
+        // Cuatro mediciones seguidas (unos 2 s) por debajo de 42 fps.
+        if (this.lowFpsStreak >= 4) {
+          this.lowFpsStreak = 0;
+          this.downgradeQuality();
+        }
+      }
     }
     return dt;
   }

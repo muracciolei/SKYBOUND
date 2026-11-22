@@ -10,6 +10,8 @@ export class InputManager {
     this.touchThrottleUp = false;
     this.touchThrottleDown = false;
     this.touchBrake = false;
+    this.touchYawLeft = false;
+    this.touchYawRight = false;
     this.mouseDelta = { x: 0, y: 0 };
     this.dragging = false;
     this.freeLookEnabled = false;
@@ -39,11 +41,9 @@ export class InputManager {
     }, { passive: false });
 
     window.addEventListener('keyup', (event) => this.keys.delete(event.code));
-    window.addEventListener('blur', () => {
-      this.keys.clear();
-      this.touchThrottleUp = false;
-      this.touchThrottleDown = false;
-      this.touchBrake = false;
+    window.addEventListener('blur', () => this.releaseTouches());
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) this.releaseTouches();
     });
   }
 
@@ -122,6 +122,8 @@ export class InputManager {
         if (action === 'throttle-up') this.touchThrottleUp = true;
         else if (action === 'throttle-down') this.touchThrottleDown = true;
         else if (action === 'brake') this.touchBrake = true;
+        else if (action === 'yaw-left') this.touchYawLeft = true;
+        else if (action === 'yaw-right') this.touchYawRight = true;
         else if (action === 'camera') this.actions.add('camera');
         else if (action === 'gear') this.actions.add('gear');
         else if (action === 'menu') this.actions.add('menu');
@@ -131,6 +133,8 @@ export class InputManager {
         if (action === 'throttle-up') this.touchThrottleUp = false;
         else if (action === 'throttle-down') this.touchThrottleDown = false;
         else if (action === 'brake') this.touchBrake = false;
+        else if (action === 'yaw-left') this.touchYawLeft = false;
+        else if (action === 'yaw-right') this.touchYawRight = false;
       };
       button.addEventListener('pointerdown', down);
       button.addEventListener('pointerup', up);
@@ -139,8 +143,25 @@ export class InputManager {
     });
   }
 
+  // Si el teléfono se bloquea o cambia de app a mitad de un toque, el mando
+  // queda apretado para siempre: al volver, el avión sigue girando solo.
+  releaseTouches() {
+    this.touchThrottleUp = false;
+    this.touchThrottleDown = false;
+    this.touchBrake = false;
+    this.touchYawLeft = false;
+    this.touchYawRight = false;
+    this.joystick.active = false;
+    this.joystick.pointerId = null;
+    this.joystick.x = 0;
+    this.joystick.y = 0;
+    if (this.joystickKnob) this.joystickKnob.style.transform = 'translate(0px, 0px)';
+    document.querySelectorAll('[data-touch].active').forEach((button) => button.classList.remove('active'));
+  }
+
   setTouchVisible(visible) {
     if (this.touchRoot) this.touchRoot.classList.toggle('hidden', !visible || !this.isTouch);
+    if (!visible) this.releaseTouches();
   }
 
   consumeAction(name) {
@@ -160,19 +181,21 @@ export class InputManager {
     const down = (code) => this.keys.has(code) ? 1 : 0;
     const pitchKeys = down('KeyW') - down('KeyS');
     const rollKeys = down('KeyA') - down('KeyD');
-    const yawKeys = down('KeyQ') - down('KeyE');
-    const pitchTouch = -this.joystick.y;
+        const yawKeys = down('KeyQ') - down('KeyE');
+      const yawTouch = (this.touchYawLeft ? 1 : 0) - (this.touchYawRight ? 1 : 0);
+      const pitchTouch = -this.joystick.y;
     const rollTouch = this.joystick.x;
 
     return {
       pitch: clamp(pitchKeys + (pitchKeys === 0 ? pitchTouch : 0), -1, 1),
       roll: clamp(rollKeys + (rollKeys === 0 ? rollTouch : 0), -1, 1),
-      yaw: clamp(yawKeys, -1, 1),
+      yaw: clamp(yawKeys + (yawKeys === 0 ? yawTouch : 0), -1, 1),
       throttleDelta: (down('ShiftLeft') || down('ShiftRight') ? 1 : 0) - (down('ControlLeft') || down('ControlRight') ? 1 : 0) +
         (this.touchThrottleUp ? 1 : 0) - (this.touchThrottleDown ? 1 : 0),
       brake: down('Space') > 0 || this.touchBrake,
-      freeForward: (down('KeyW') || down('ArrowUp') ? 1 : 0) - (down('KeyS') || down('ArrowDown') ? 1 : 0),
-      freeStrafe: (down('KeyD') || down('ArrowRight') ? 1 : 0) - (down('KeyA') || down('ArrowLeft') ? 1 : 0),
+      // En cámara libre el joystick mueve la cámara, igual que W/S y A/D.
+      freeForward: (down('KeyW') || down('ArrowUp') ? 1 : 0) - (down('KeyS') || down('ArrowDown') ? 1 : 0) || clamp(pitchTouch, -1, 1),
+      freeStrafe: (down('KeyD') || down('ArrowRight') ? 1 : 0) - (down('KeyA') || down('ArrowLeft') ? 1 : 0) || clamp(rollTouch, -1, 1),
       freeVertical: (down('KeyQ') ? 1 : 0) - (down('KeyE') ? 1 : 0) - (down('ControlLeft') ? 1 : 0) + (down('Space') ? 1 : 0),
       keys: this.keys
     };
