@@ -49,7 +49,7 @@ Configuración inicial, una sola vez:
 2. En **Build and deployment → Source**, elige **GitHub Actions**.
 3. Guarda. El siguiente push a `main` publica el sitio (también puedes lanzarlo desde la pestaña **Actions**).
 
-> La fuente debe ser **GitHub Actions**. Si la dejas en *Deploy from a branch*, GitHub ejecutará además su propio build por rama en cada push: dos publicadores escribiendo el mismo sitio, que terminan pisándose.
+> La fuente debe ser **GitHub Actions**. Si la dejas en *Deploy from a branch*, GitHub publica el sitio por su cuenta en cada push y el workflow detecta ese modo y se salta el despliegue, así que nunca hay dos publicadores pisándose; igual conviene dejar una sola fuente.
 
 No hay que cambiar rutas ni ejecutar un build: Three.js está incluido en `vendor/three/` y `index.html` usa rutas relativas y un *import map*.
 
